@@ -35,6 +35,8 @@
 #define PKEY_BOLD_TIME 28
 #define PKEY_BOLD_SUN 29
 #define PKEY_BOLD_WX 30
+#define PKEY_WX_TIME 31     // when the last weather push arrived (time_t as int)
+#define WX_STALE_S (6 * 3600)   // older than this, weather and forecast are hidden, not shown as current
 #define PKEY_COLOR_RGB 26   // set once DAY_*, NIGHT_* and ACCENT hold 0xRRGGBB instead of a palette index
 
 // Unlit segments: 17..49% all round to the same one-step tint on the 64-colour palette (below 17% it
@@ -74,6 +76,8 @@ static bool s_time24 = true, s_mdy = true, s_ghosts = true;
 // Weather and sun times from the phone; sun times are minutes since local midnight
 static int s_wx_temp, s_wx_code, s_wx_hi, s_wx_lo;
 static bool s_wx_ok;
+static int s_wx_time;      // arrival time of the last weather push
+static bool s_wx_show;     // s_wx_ok and fresh; recomputed at the start of every paint
 static int s_sunrise = 450, s_sunset = 1170;
 
 // Resolved colours for the current theme
@@ -376,6 +380,14 @@ static void draw_daylight(GContext *ctx, int now_min) {
   if (!G.labels) { draw_arc(ctx, G.mx, W - 2 * G.mx, G.strip_base, 4, now_min); return; }
   const int y0 = G.strip_base;
   bool day = now_min >= s_sunrise && now_min < s_sunset;
+  if (s_sunset == s_sunrise || s_sunset - s_sunrise >= 1440) {   // the phone sends 0/0 (polar night) or 0/1440 (midnight sun): no countdown to show
+    s_ghosts_on = false;
+    graphics_context_set_text_color(ctx, s_fg);
+    draw_text(ctx, day ? "MIDNIGHT SUN" : "POLAR NIGHT", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(G.mx - 1, y0 + 6, 100, 24), GTextAlignmentLeft);
+    s_ghosts_on = s_ghosts;
+    draw_arc(ctx, W / 2 + 8, W - G.mx - (W / 2 + 8), y0 + 31, 7, now_min);
+    return;
+  }
   int mins = day ? s_sunset - now_min : now_min < s_sunrise ? s_sunrise - now_min : 1440 - now_min + s_sunrise;
   char cd[16];
   snprintf(cd, sizeof(cd), "%d:%02d", mins / 60, mins % 60);
@@ -417,7 +429,7 @@ static void draw_forecast(GContext *ctx, struct tm *tm) {
   draw_text(ctx, "NEXT 12H", f, GRect(x0 - 1, G.bot_y + 1, 90, 16), GTextAlignmentLeft);
   if (s_fc_hour < 0) return;
   int off = (tm->tm_hour - s_fc_hour + 24) % 24;
-  if (off > FC_N - FC_SHOW) off = FC_N - FC_SHOW;
+  if (off > FC_N - FC_SHOW) return;   // forecast too old: hide it rather than draw shifted hours
   int lo = 255, hi = 0;
   for (int i = 0; i < FC_SHOW; i++) {
     int v = s_fc_t[off + i];
@@ -447,7 +459,7 @@ static void paint_timeline(GContext *ctx, struct tm *tm, int now_min) {
   const int mx = G.mx;
   draw_date(ctx, tm, mx, G.date_y);
   GFont f24 = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), f18 = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
-  if (s_wx_ok) {
+  if (s_wx_show) {
     snprintf(buf, sizeof(buf), "%d\xC2\xB0", s_wx_temp);
     graphics_context_set_text_color(ctx, s_fg);
     draw_text(ctx, buf, f24, GRect(W - mx - 56, G.date_y, 56, 28), GTextAlignmentRight);
@@ -467,14 +479,14 @@ static void paint_timeline(GContext *ctx, struct tm *tm, int now_min) {
   const int step = 15, bw = 13, x0 = 10, seg = 4, maxseg = 7, base = G.bot_y + 48;
   graphics_context_set_text_color(ctx, mix(s_fg, s_bg, 62));
   draw_text(ctx, "NEXT 12H", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(x0 - 2, G.bot_y, 90, 16), GTextAlignmentLeft);
-  if (s_wx_ok) {
+  if (s_wx_show) {
     snprintf(buf, sizeof(buf), "%d / %d\xC2\xB0", s_wx_lo, s_wx_hi);
     graphics_context_set_text_color(ctx, s_fg);
     draw_text(ctx, buf, f18, GRect(W - mx - 90, G.bot_y - 4, 90, 24), GTextAlignmentRight);
   }
   if (s_fc_hour < 0) return;
   int off = (tm->tm_hour - s_fc_hour + 24) % 24;
-  if (off > FC_N - FC_SHOW) off = FC_N - FC_SHOW;
+  if (off > FC_N - FC_SHOW) return;   // forecast too old: hide it rather than draw shifted hours
   int lo = 255, hi = 0;
   for (int i = 0; i < FC_SHOW; i++) {
     int v = s_fc_t[off + i];
@@ -523,7 +535,7 @@ static void paint_stack(GContext *ctx, struct tm *tm, time_t now, int now_min) {
   lcd14_centered(ctx, s_mdy ? mo : dd, cx, 33, 20, 2, s_fg);
   lcd14_centered(ctx, s_mdy ? dd : mo, cx, 61, 20, 2, s_fg);
   draw_moon(ctx, cx, 103, 10, now);
-  if (s_wx_ok) {
+  if (s_wx_show) {
     graphics_context_set_text_color(ctx, icon_color());
     draw_text(ctx, wx_glyph(s_wx_code, s_night), s_f_wx, GRect(ax, 123, aw, 34), GTextAlignmentCenter);
     snprintf(buf, sizeof(buf), "%d", s_wx_temp);
@@ -571,6 +583,7 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, s_body);
   graphics_fill_rect(ctx, GRect(0, 0, W, H), 0, GCornerNone);
   s_ghosts_on = s_ghosts;
+  s_wx_show = s_wx_ok && (int)now - s_wx_time < WX_STALE_S;
   if (s_layout == 2) { paint_timeline(ctx, tm, now_min); return; }
   if (s_layout == 3) { paint_stack(ctx, tm, now, now_min); return; }
 
@@ -588,7 +601,7 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   // Bottom-left: weather icon, current temperature large, low / high small
   int by = G.bot_y, mx = G.mx;
   graphics_context_set_text_color(ctx, icon_color());
-  if (s_wx_ok) {
+  if (s_wx_show) {
     draw_text(ctx, wx_glyph(s_wx_code, s_night), s_f_wx, GRect(mx, by + 2, 40, 36), GTextAlignmentLeft);
     snprintf(buf, sizeof(buf), "%d", s_wx_temp);
   } else {
@@ -604,7 +617,7 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   graphics_context_set_stroke_width(ctx, 2);
   graphics_draw_circle(ctx, GPoint(tx + lcd_width(buf, tw, 34, 4) + 5, by + 8), 3);
   graphics_context_set_stroke_width(ctx, 1);
-  if (s_wx_ok) {
+  if (s_wx_show) {
     GFont f = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
     char lo[8], hi[8];
     snprintf(lo, sizeof(lo), "%d", s_wx_lo);
@@ -669,7 +682,12 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   GET_INT(FC_H, s_fc_hour, PKEY_FC + 1)
   if ((tp = dict_find(iter, MESSAGE_KEY_FC_T)) && tp->length >= FC_N) { memcpy(s_fc_t, tp->value->data, FC_N); persist_write_data(PKEY_FC, s_fc_t, FC_N); }
   if ((tp = dict_find(iter, MESSAGE_KEY_FC_P)) && tp->length >= FC_N) { memcpy(s_fc_p, tp->value->data, FC_N); persist_write_data(PKEY_FC + 2, s_fc_p, FC_N); }
-  if ((tp = dict_find(iter, MESSAGE_KEY_WX_OK))) { s_wx_ok = tp->value->int32 != 0; persist_write_bool(PKEY_WX_OK, s_wx_ok); }
+  if ((tp = dict_find(iter, MESSAGE_KEY_WX_OK))) {
+    s_wx_ok = tp->value->int32 != 0;
+    s_wx_time = (int)time(NULL);
+    persist_write_bool(PKEY_WX_OK, s_wx_ok);
+    persist_write_int(PKEY_WX_TIME, s_wx_time);
+  }
 #undef GET_INT
 #undef GET_BOOL
   refresh();
@@ -717,6 +735,7 @@ static void load_settings(void) {
   LOAD_INT(s_sunrise, PKEY_SUNRISE)
   LOAD_INT(s_sunset, PKEY_SUNSET)
   LOAD_BOOL(s_wx_ok, PKEY_WX_OK)
+  s_wx_time = persist_exists(PKEY_WX_TIME) ? persist_read_int(PKEY_WX_TIME) : (int)time(NULL);   // pre-1.5 data: count as fresh once
   LOAD_INT(s_fc_hour, PKEY_FC + 1)
   LOAD_BOOL(s_fahr, PKEY_FC + 3)
   LOAD_INT(s_layout, PKEY_LAYOUT)
@@ -752,7 +771,7 @@ static void init(void) {
   window_stack_push(s_window, true);
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   app_message_register_inbox_received(inbox_received_handler);
-  app_message_open(256, 64);
+  app_message_open(512, 64);   // Clay sends the whole settings dict (incl. search text, city, coordinates); keep headroom
 }
 
 static void deinit(void) {

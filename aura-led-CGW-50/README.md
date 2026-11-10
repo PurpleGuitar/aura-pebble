@@ -14,6 +14,10 @@ The settings page (Clay) sets the layout, the theme (automatic, always day, alwa
 
 Weather, forecast and sun times come from [Open-Meteo](https://open-meteo.com), with no API key. Weather data by Open-Meteo.com, licensed CC BY 4.0.
 
+## Privacy
+
+The watch has no internet. The phone sends your location to Open-Meteo to get the weather: the phone's GPS position rounded to two decimals (about 1 km), or the city you picked in the settings. City searches in the settings page are sent to Open-Meteo's geocoder as you type. Nothing else leaves the phone, there are no accounts, no analytics and no API keys, and the face stores its settings only on the phone and the watch.
+
 ## Design origin
 
 The layout and idea come from the Casio CGW-50 "Cosmo Phase" watch. This is an independent, non-commercial reimplementation made as a tribute. It is not affiliated with or endorsed by Casio, and all code here is original except where credited below. Casio and Cosmo Phase are trademarks of their owners.

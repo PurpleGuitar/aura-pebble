@@ -102,7 +102,7 @@ module.exports = [
     "type": "section",
     "items": [
       { "type": "heading", "defaultValue": "Weather" },
-      { "type": "text", "defaultValue": "Temperature, high and low, forecast, sunrise and sunset, from Open-Meteo (open-meteo.com, CC BY 4.0)." },
+      { "type": "text", "defaultValue": "Temperature, high and low, forecast, sunrise and sunset, from Open-Meteo (open-meteo.com, CC BY 4.0). Open-Meteo receives your location rounded to about 1 km, or the city you search for. Nothing else is sent." },
       { "type": "toggle", "messageKey": "UNITS", "label": "Fahrenheit (off = Celsius)", "defaultValue": false },
       { "type": "input", "messageKey": "SEARCH", "label": "Search a city",
         "attributes": { "placeholder": "e.g. Tokyo, Teruel", "autocomplete": "off" } },

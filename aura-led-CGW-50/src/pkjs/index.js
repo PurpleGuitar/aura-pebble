@@ -96,12 +96,18 @@ function clayStyle() {
       }
     }
 
+    var seq = 0;   // only the newest query may draw results (replies can arrive out of order)
+
     function search(q) {
       var url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
         encodeURIComponent(q) + '&count=8&language=en&format=json';
+      var my = ++seq;
       var req = new XMLHttpRequest();
       req.open('GET', url, true);
+      req.timeout = 8000;
+      req.ontimeout = function () { if (my === seq) { render([]); } };
       req.onload = function () {
+        if (my !== seq) { return; }
         if (req.status < 200 || req.status >= 300) { render([]); return; }
         var rows = [];
         try {
@@ -117,7 +123,7 @@ function clayStyle() {
         } catch (e) {}
         render(rows);
       };
-      req.onerror = function () { render([]); };
+      req.onerror = function () { if (my === seq) { render([]); } };
       req.send();
     }
 
@@ -161,43 +167,69 @@ function settings() {
 // A failed refresh keeps the last good reading on the watch instead of blanking it.
 function sendError() { console.log('weather refresh failed'); }
 
-// Open-Meteo times come back in GMT (timezone=GMT) and are converted to the phone's local
-// clock, so the watch compares sunrise and sunset with its own time of day.
-function localMinutes(iso) {
-  var d = new Date(iso + 'Z');
+// timezone=auto: Open-Meteo returns the location's own calendar day (so "today" high and low are
+// right anywhere) with times in the location's local time plus utc_offset_seconds. Turning a
+// location-local ISO string into a real instant, then reading it on the phone's clock, gives
+// the watch sunrise and sunset in its own time of day.
+function instant(iso, off) {
+  return Date.parse(iso + 'Z') - off * 1000;
+}
+
+function localMinutes(iso, off) {
+  var d = new Date(instant(iso, off));
   return d.getHours() * 60 + d.getMinutes();
 }
+
+// Polar day and night: the API reports sunrise equal to sunset. daylight_duration tells them
+// apart. Sent as 0..1440 (sun up all day) or 0..0 (never up), which the watch labels.
+function sunTimes(d, off) {
+  var rise = d.daily.sunrise[0], set = d.daily.sunset[0];
+  if (!rise || !set || rise === set) {
+    var up = (d.daily.daylight_duration && d.daily.daylight_duration[0] > 0);
+    return { rise: 0, set: up ? 1440 : 0 };
+  }
+  return { rise: localMinutes(rise, off), set: localMinutes(set, off) };
+}
+
+var fetchSeq = 0;   // only the newest request may update the watch
 
 function fetchWeather(lat, lon) {
   var s = settings();
   var unit = s.UNITS ? '&temperature_unit=fahrenheit' : '';
-  var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat +
-            '&longitude=' + lon + '&current=temperature_2m,weather_code' +
-            '&hourly=temperature_2m,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset' +
-            '&timezone=GMT&forecast_days=2' + unit;
+  // Two decimals (about 1 km) is plenty for weather and shares less than the exact GPS fix.
+  var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + Number(lat).toFixed(2) +
+            '&longitude=' + Number(lon).toFixed(2) + '&current=temperature_2m,weather_code' +
+            '&hourly=temperature_2m,precipitation_probability' +
+            '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration' +
+            '&timezone=auto&forecast_days=2' + unit;
+  var my = ++fetchSeq;
   var xhr = new XMLHttpRequest();
   xhr.timeout = 15000;
   xhr.onload = function () {
+    if (my !== fetchSeq) { return; }
+    if (xhr.status !== 200) { console.log('weather http ' + xhr.status); sendError(); return; }
     try {
       var d = JSON.parse(xhr.responseText);
+      var off = d.utc_offset_seconds | 0;
       var now = Date.now(), start = 0, ft = [], fp = [];
       for (var k = 0; k < d.hourly.time.length; k++) {
-        if (new Date(d.hourly.time[k] + 'Z').getTime() > now - 3600000) { start = k; break; }
+        if (instant(d.hourly.time[k], off) > now - 3600000) { start = k; break; }
       }
       for (var h = 0; h < 18; h++) {
         ft.push(Math.max(0, Math.min(255, Math.round(d.hourly.temperature_2m[start + h]) + 50)));
         fp.push(Math.max(0, Math.min(100, d.hourly.precipitation_probability[start + h] | 0)));
       }
+      var sun = sunTimes(d, off);
       Pebble.sendAppMessage({
-        'FC_H': new Date(d.hourly.time[start] + 'Z').getHours(),
+        'FC_H': new Date(instant(d.hourly.time[start], off)).getHours(),
         'FC_T': ft,
         'FC_P': fp,
         'WX_TEMP': Math.round(d.current.temperature_2m),
         'WX_CODE': d.current.weather_code | 0,
         'WX_HI': Math.round(d.daily.temperature_2m_max[0]),
         'WX_LO': Math.round(d.daily.temperature_2m_min[0]),
-        'SUNRISE': localMinutes(d.daily.sunrise[0]),
-        'SUNSET': localMinutes(d.daily.sunset[0]),
+        'SUNRISE': sun.rise,
+        'SUNSET': sun.set,
         'WX_OK': 1
       });
     } catch (e) { console.log('weather parse: ' + e); sendError(); }
@@ -231,7 +263,15 @@ Pebble.addEventListener('ready', function () {
   setInterval(locateAndFetch, 30 * 60 * 1000); // refresh every 30 minutes
 });
 
-// The watch (or a settings save) can trigger an immediate refresh by messaging us.
+// A settings save (units, city, GPS) must show up now, not at the next 30 minute tick. Clay has
+// already written the new values to localStorage by the time this fires (its own listener is
+// registered first), so a short delay is enough.
+Pebble.addEventListener('webviewclosed', function (e) {
+  if (e && e.response) { setTimeout(locateAndFetch, 500); }
+});
+
+// The watch never messages the phone; this is only a manual hook for testing
+// (e.g. `pebble send-app-message` from the emulator) to force an immediate refresh.
 Pebble.addEventListener('appmessage', function () {
   locateAndFetch();
 });

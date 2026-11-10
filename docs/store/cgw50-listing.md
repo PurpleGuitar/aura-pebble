@@ -20,6 +20,10 @@ Inspired by the Casio CGW-50 "Cosmo Phase". An independent, non-commercial tribu
 
 Credits: digit rendering adapted from PT2-LCD221 by Kicou (MIT); segment shapes from the 7-Segment font by Jan Bobrowski and DSEG14 by Keshikan, and Weather Icons by Erik Flowers (all SIL OFL 1.1); weather data by Open-Meteo.com (CC BY 4.0).
 
+## Release notes (1.5.0)
+
+Fixed: changing units, the city or GPS in the settings now updates the weather straight away instead of up to 30 minutes later. If the phone cannot refresh the weather for 6 hours, the temperature, high and low and the forecast are hidden instead of showing old numbers. The high and low now cover the location's own day, wherever it is. In polar night and midnight sun the face shows a label instead of a countdown that makes no sense. Privacy: the location sent to Open-Meteo is rounded to about 1 km, and the README and the settings page now say what is shared. The city search ignores late replies and times out, and the settings message has more headroom.
+
 ## Release notes (1.4.0)
 
 The face itself is unchanged from 1.3. This release replaces the store screenshots, which showed every theme in the same grey on black by mistake. They now show the real colours: black on white by day, amber and mint at night, and the pink and grey themes.
