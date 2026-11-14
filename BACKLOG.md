@@ -62,6 +62,7 @@
 ## Pending
 
 - Sky and Cityscape: real-watch check still outstanding (Clay page on the phone, real GPS, the city search, shake-to-animate, a city in another time zone). Check the Cityscape description in the dashboard (1,719 characters against a documented 1,600 cap), both categories and the banners once the store refreshes. Cityscape is still at 1.0.0 and uses one fixed skyline for every location. Hourly labels in both use the watch's time zone while the scene uses the city's. Neither has aviso, wind, UV or air pages.
+- Idea, separate Mac project outside this repo: a Swift menu-bar app that locks the Mac when the Pebble leaves range and wakes the display when it returns, using CoreBluetooth RSSI. First step is a scan test to see whether the Mac can see the Pebble as a stable device, since it pairs with the phone through the Core Devices app and may rotate its address. If not, relay through the phone. Unlocking the login screen has no public macOS API, so it would mean typing a Keychain-stored password with synthesized key events (Accessibility permission, fragile, as MacID and NearLock do).
 
 ## Notes
 
