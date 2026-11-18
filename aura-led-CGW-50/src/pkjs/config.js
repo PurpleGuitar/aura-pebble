@@ -45,7 +45,8 @@ module.exports = [
       { "type": "select", "messageKey": "LAYOUT", "label": "Style", "defaultValue": "0",
         "options": [{ "label": "Quiet (plain)", "value": "0" }, { "label": "Timeline (sun strip over forecast)", "value": "2" }, { "label": "Stack (hours over minutes)", "value": "3" }] },
       { "type": "select", "messageKey": "STACK_SIDE", "label": "Stack: date and weather column", "defaultValue": "0",
-        "options": [{ "label": "Right of the time", "value": "0" }, { "label": "Left of the time", "value": "1" }] }
+        "options": [{ "label": "Right of the time", "value": "0" }, { "label": "Left of the time", "value": "1" }] },
+      { "type": "toggle", "messageKey": "STACK_SUN", "label": "Stack: show sun line", "defaultValue": true }
     ]
   },
   {

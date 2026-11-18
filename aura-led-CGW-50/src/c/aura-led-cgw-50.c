@@ -36,6 +36,7 @@
 #define PKEY_BOLD_SUN 29
 #define PKEY_BOLD_WX 30
 #define PKEY_WX_TIME 31     // when the last weather push arrived (time_t as int)
+#define PKEY_STACK_SUN 32
 #define WX_STALE_S (6 * 3600)   // older than this, weather and forecast are hidden, not shown as current
 #define PKEY_COLOR_RGB 26   // set once DAY_*, NIGHT_* and ACCENT hold 0xRRGGBB instead of a palette index
 
@@ -59,6 +60,7 @@ static const Geo GEO[4] = {
 static int s_date_style = 4;
 static int s_layout;
 static int s_stack_left;   // Stack: 1 puts the date and weather column on the left
+static bool s_stack_sun = true;   // Stack: false hides the sun strip and centres the rest
 static GColor s_body;
 #define G GEO[s_layout]
 
@@ -507,9 +509,11 @@ static void paint_timeline(GContext *ctx, struct tm *tm, int now_min) {
 }
 
 // Stack layout: hours over minutes, huge, with a narrow column of date and weather beside them
-// and the sun strip along the bottom edge.
+// and the sun strip along the bottom edge. Without the strip, everything moves down to sit centred;
+// the offset is fixed by the full block (digits and weather, y 5..200) so it doesn't jump when weather hides.
 static void paint_stack(GContext *ctx, struct tm *tm, time_t now, int now_min) {
   const int w = G.time_w, h = G.time_h, gap = 5;
+  const int dy = s_stack_sun ? 0 : (H - (201 - 5)) / 2 - 5;
   const int dw = lcd_width("88", w, h, gap);
   const int x0 = s_stack_left ? W - 6 - dw : 6;   // digits
   const int ax = s_stack_left ? 0 : x0 + dw, aw = s_stack_left ? x0 : W - ax;   // column area
@@ -520,8 +524,8 @@ static void paint_stack(GContext *ctx, struct tm *tm, time_t now, int now_min) {
   snprintf(mm, sizeof(mm), "%02d", tm->tm_min);
   s_ghosts_on = s_ghosts;
   s_bold7 = s_bold_time;
-  lcd_str(ctx, hh, x0 + lcd_width("88", w, h, gap) - lcd_width(hh, w, h, gap), 5, w, h, gap);
-  lcd_str(ctx, mm, x0, 105, w, h, gap);
+  lcd_str(ctx, hh, x0 + lcd_width("88", w, h, gap) - lcd_width(hh, w, h, gap), 5 + dy, w, h, gap);
+  lcd_str(ctx, mm, x0, 105 + dy, w, h, gap);
   s_bold7 = 0;
 
   char d[4], mo[4], dd[4];
@@ -531,23 +535,23 @@ static void paint_stack(GContext *ctx, struct tm *tm, time_t now, int now_min) {
   mo[3] = 0;
   snprintf(dd, sizeof(dd), "%d", tm->tm_mday);
   s_ghosts_on = s_ghosts;
-  lcd14_centered(ctx, d, cx, 5, 20, 2, s_accent);
-  lcd14_centered(ctx, s_mdy ? mo : dd, cx, 33, 20, 2, s_fg);
-  lcd14_centered(ctx, s_mdy ? dd : mo, cx, 61, 20, 2, s_fg);
-  draw_moon(ctx, cx, 103, 10, now);
+  lcd14_centered(ctx, d, cx, 5 + dy, 20, 2, s_accent);
+  lcd14_centered(ctx, s_mdy ? mo : dd, cx, 33 + dy, 20, 2, s_fg);
+  lcd14_centered(ctx, s_mdy ? dd : mo, cx, 61 + dy, 20, 2, s_fg);
+  draw_moon(ctx, cx, 103 + dy, 10, now);
   if (s_wx_show) {
     graphics_context_set_text_color(ctx, icon_color());
-    draw_text(ctx, wx_glyph(s_wx_code, s_night), s_f_wx, GRect(ax, 123, aw, 34), GTextAlignmentCenter);
+    draw_text(ctx, wx_glyph(s_wx_code, s_night), s_f_wx, GRect(ax, 123 + dy, aw, 34), GTextAlignmentCenter);
     snprintf(buf, sizeof(buf), "%d", s_wx_temp);
     s_ink = s_fg;
     int tw = lcd_width(buf, 11, 21, 3);
     int tx = cx - (tw + 9) / 2;
     s_bold7 = s_bold_wx;
-    lcd_str(ctx, buf, tx, 159, 11, 21, 3);
+    lcd_str(ctx, buf, tx, 159 + dy, 11, 21, 3);
     s_bold7 = 0;
     graphics_context_set_stroke_color(ctx, s_fg);
     graphics_context_set_stroke_width(ctx, 2);
-    graphics_draw_circle(ctx, GPoint(tx + tw + 5, 162), 3);
+    graphics_draw_circle(ctx, GPoint(tx + tw + 5, 162 + dy), 3);
     graphics_context_set_stroke_width(ctx, 1);
     char lo[8], hi[8];
     snprintf(lo, sizeof(lo), "%d", s_wx_lo);
@@ -562,15 +566,15 @@ static void paint_stack(GContext *ctx, struct tm *tm, time_t now, int now_min) {
     }
     int x = cx - (10 + sl.w + 6 + 10 + sh.w) / 2;
     graphics_context_set_stroke_color(ctx, s_accent);
-    tri(ctx, x, 194, false);
+    tri(ctx, x, 194 + dy, false);
     graphics_context_set_text_color(ctx, s_fg);
-    draw_text(ctx, lo, lf, GRect(x + 10, 183, sl.w + 4, 28), GTextAlignmentLeft);
+    draw_text(ctx, lo, lf, GRect(x + 10, 183 + dy, sl.w + 4, 28), GTextAlignmentLeft);
     x += 10 + sl.w + 6;
     graphics_context_set_stroke_color(ctx, s_accent);
-    tri(ctx, x, 194, true);
-    draw_text(ctx, hi, lf, GRect(x + 10, 183, sh.w + 4, 28), GTextAlignmentLeft);
+    tri(ctx, x, 194 + dy, true);
+    draw_text(ctx, hi, lf, GRect(x + 10, 183 + dy, sh.w + 4, 28), GTextAlignmentLeft);
   }
-  draw_daylight(ctx, now_min);
+  if (s_stack_sun) draw_daylight(ctx, now_min);
 }
 
 static void canvas_update(Layer *layer, GContext *ctx) {
@@ -677,6 +681,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   GET_BOOL(UNITS, s_fahr, PKEY_FC + 3)
   GET_INT(LAYOUT, s_layout, PKEY_LAYOUT)
   GET_INT(STACK_SIDE, s_stack_left, PKEY_STACKSIDE)
+  GET_BOOL(STACK_SUN, s_stack_sun, PKEY_STACK_SUN)
   if (s_layout == 1) s_layout = 0;
   GET_INT(DATE_STYLE, s_date_style, PKEY_DATESTYLE)
   GET_INT(FC_H, s_fc_hour, PKEY_FC + 1)
@@ -740,6 +745,7 @@ static void load_settings(void) {
   LOAD_BOOL(s_fahr, PKEY_FC + 3)
   LOAD_INT(s_layout, PKEY_LAYOUT)
   LOAD_INT(s_stack_left, PKEY_STACKSIDE)
+  LOAD_BOOL(s_stack_sun, PKEY_STACK_SUN)
   LOAD_INT(s_date_style, PKEY_DATESTYLE)
   if (s_layout < 0 || s_layout > 3 || s_layout == 1) s_layout = 0;
   if (persist_exists(PKEY_FC)) persist_read_data(PKEY_FC, s_fc_t, FC_N);
