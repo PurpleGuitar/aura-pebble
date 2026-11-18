@@ -37,6 +37,7 @@
 #define PKEY_BOLD_WX 30
 #define PKEY_WX_TIME 31     // when the last weather push arrived (time_t as int)
 #define PKEY_STACK_SUN 32
+#define PKEY_HOUR_PAD 33
 #define WX_STALE_S (6 * 3600)   // older than this, weather and forecast are hidden, not shown as current
 #define PKEY_COLOR_RGB 26   // set once DAY_*, NIGHT_* and ACCENT hold 0xRRGGBB instead of a palette index
 
@@ -74,6 +75,7 @@ static int s_day_bg = 0xFFFFFF, s_day_fg = 0x000000, s_night_bg = 0x000000, s_ni
 static int s_accent_rgb = 0xFF5500;
 static bool s_accent_auto = true;
 static bool s_time24 = true, s_mdy = true, s_ghosts = true;
+static bool s_hour_pad;   // 12h: unlit tens digit before hours 1..9 (needs ghosts)
 
 // Weather and sun times from the phone; sun times are minutes since local midnight
 static int s_wx_temp, s_wx_code, s_wx_hi, s_wx_lo;
@@ -215,6 +217,14 @@ static void tri(GContext *ctx, int x, int y, bool up) {   // 7 x 6 triangle with
     int w = 1 + (up ? r : 5 - r) * 6 / 5;
     graphics_draw_line(ctx, GPoint(x + 3 - w / 2, y + r), GPoint(x + 3 - w / 2 + w - 1, y + r));
   }
+}
+
+// Hour digits: zero-padded in 24h; in 12h, 1..9 get an unlit tens digit if that's on and ghosts are.
+static void fmt_hour(char *buf, size_t n, int hour) {
+  int h12 = hour % 12 ? hour % 12 : 12;
+  if (s_time24) snprintf(buf, n, "%02d", hour);
+  else if (h12 < 10 && s_hour_pad && s_ghosts) snprintf(buf, n, "_%d", h12);
+  else snprintf(buf, n, "%d", h12);
 }
 
 // Weather glyph colour: the accent, unless it is too close to the background to read.
@@ -477,8 +487,8 @@ static void paint_timeline(GContext *ctx, struct tm *tm, int now_min) {
     draw_text(ctx, wx_glyph(s_wx_code, s_night), s_f_wx, GRect(tx - 36, G.date_y - 2, 34, 30), GTextAlignmentRight);
   }
   s_ghosts_on = s_ghosts;
-  if (s_time24) snprintf(buf, sizeof(buf), "%02d:%02d", tm->tm_hour, tm->tm_min);
-  else snprintf(buf, sizeof(buf), "%d:%02d", tm->tm_hour % 12 ? tm->tm_hour % 12 : 12, tm->tm_min);
+  fmt_hour(buf, sizeof(buf), tm->tm_hour);
+  snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), ":%02d", tm->tm_min);
   s_bold7 = s_bold_time;
   lcd_centered(ctx, buf, G.time_w, G.time_h, 5, GRect(0, G.time_y, W, G.time_h));
   s_bold7 = 0;
@@ -540,8 +550,7 @@ static void paint_stack(GContext *ctx, struct tm *tm, time_t now, int now_min) {
   const int ax = s_stack_left ? 0 : x0 + dw, aw = s_stack_left ? x0 : W - ax;   // column area
   const int cx = ax + aw / 2;   // column centre
   char hh[4], mm[4], buf[16];
-  if (s_time24) snprintf(hh, sizeof(hh), "%02d", tm->tm_hour);
-  else snprintf(hh, sizeof(hh), "%d", tm->tm_hour % 12 ? tm->tm_hour % 12 : 12);
+  fmt_hour(hh, sizeof(hh), tm->tm_hour);
   snprintf(mm, sizeof(mm), "%02d", tm->tm_min);
   s_ghosts_on = s_ghosts;
   s_bold7 = s_bold_time;
@@ -616,8 +625,8 @@ static void canvas_update(Layer *layer, GContext *ctx) {
   draw_moon(ctx, W - G.mx - 9, G.date_y + 16, 9, now);
   draw_daylight(ctx, now_min);
 
-  if (s_time24) snprintf(buf, sizeof(buf), "%02d:%02d", tm->tm_hour, tm->tm_min);
-  else snprintf(buf, sizeof(buf), "%d:%02d", tm->tm_hour % 12 ? tm->tm_hour % 12 : 12, tm->tm_min);
+  fmt_hour(buf, sizeof(buf), tm->tm_hour);
+  snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), ":%02d", tm->tm_min);
   s_bold7 = s_bold_time;
   lcd_centered(ctx, buf, G.time_w, G.time_h, 5, GRect(0, G.time_y, W, G.time_h));
   s_bold7 = 0;
@@ -686,6 +695,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   GET_INT(NIGHT_FG, s_night_fg, PKEY_NIGHT_FG)
   GET_INT(ACCENT, s_accent_rgb, PKEY_ACCENT)
   GET_BOOL(TIME24, s_time24, PKEY_TIME24)
+  GET_BOOL(HOUR_PAD, s_hour_pad, PKEY_HOUR_PAD)
   GET_BOOL(DATE_MDY, s_mdy, PKEY_MDY)
   GET_BOOL(ACCENT_AUTO, s_accent_auto, PKEY_ACCENT_AUTO)
   GET_BOOL(DATE_BOLD, s_seg14_bold, PKEY_SEG14_BOLD)
@@ -748,6 +758,7 @@ static void load_settings(void) {
     persist_write_bool(PKEY_COLOR_RGB, true);
   }
   LOAD_BOOL(s_time24, PKEY_TIME24)
+  LOAD_BOOL(s_hour_pad, PKEY_HOUR_PAD)
   LOAD_BOOL(s_mdy, PKEY_MDY)
   LOAD_BOOL(s_seg14_bold, PKEY_SEG14_BOLD)
   LOAD_BOOL(s_bold_time, PKEY_BOLD_TIME)

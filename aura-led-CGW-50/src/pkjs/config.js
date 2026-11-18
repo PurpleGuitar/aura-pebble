@@ -95,6 +95,7 @@ module.exports = [
       { "type": "toggle", "messageKey": "SUN_BOLD", "label": "Bold sunrise / sunset countdown", "defaultValue": false },
       { "type": "toggle", "messageKey": "WX_BOLD", "label": "Bold temperature", "defaultValue": false },
       { "type": "toggle", "messageKey": "TIME24", "label": "24 hour clock", "defaultValue": true },
+      { "type": "toggle", "messageKey": "HOUR_PAD", "label": "12 hour: unlit tens digit before 1-9", "defaultValue": false },
       { "type": "toggle", "messageKey": "DATE_MDY", "label": "Month before day (off = day-month)", "defaultValue": true },
       { "type": "toggle", "messageKey": "GHOSTS", "label": "Show unlit LCD segments", "defaultValue": true }
     ]

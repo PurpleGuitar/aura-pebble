@@ -36,6 +36,7 @@
       "ACCENT",
       "ACCENT_AUTO",
       "TIME24",
+      "HOUR_PAD",
       "DATE_MDY",
       "GHOSTS",
       "DATE_BOLD",
