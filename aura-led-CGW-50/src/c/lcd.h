@@ -160,7 +160,7 @@ static int lcd_width(const char *s, int w, int h, int gap) {
   return tot;
 }
 
-// Draw `s` (digits, '-', ':', ' ') with its top-left at (x, y). Call outside any other
+// Draw `s` (digits, '-', ':', ' ', '_' = a digit with every segment unlit) with its top-left at (x, y). Call outside any other
 // drawing on the context: it captures the framebuffer.
 static void lcd_str(GContext *ctx, const char *s, int x, int y, int w, int h, int gap) {
   s_fb = graphics_capture_frame_buffer(ctx);
@@ -174,6 +174,8 @@ static void lcd_str(GContext *ctx, const char *s, int x, int y, int w, int h, in
       }
     } else if (*c == '-') {
       lcd_digit(x, y, w, h, LCD_DIGIT_MINUS);
+    } else if (*c == '_') {
+      lcd_digit(x, y, w, h, -1);
     } else if (*c >= '0' && *c <= '9') {
       lcd_digit(x, y, w, h, *c - '0');
     }
