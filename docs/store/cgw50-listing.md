@@ -20,6 +20,10 @@ Inspired by the Casio CGW-50 "Cosmo Phase". An independent, non-commercial tribu
 
 Credits: digit rendering adapted from PT2-LCD221 by Kicou (MIT); segment shapes from the 7-Segment font by Jan Bobrowski and DSEG14 by Keshikan, and Weather Icons by Erik Flowers (all SIL OFL 1.1); weather data by Open-Meteo.com (CC BY 4.0).
 
+## Release notes (1.6.0)
+
+New: a "Stack: show sun line" setting. Turn it off and Stack drops the sun strip and centres the time, date and weather with more room around the digits. Thanks to Craig Oliver (PurpleGuitar) for the idea and the pull request. Fixed: in Timeline the Dot matrix, Bold dots and hybrid date styles showed the system font instead of dots. They now draw as dots. Changed: in Timeline the temperature at the top right and the low and high under the sun strip are now in the same 7-segment digits as the time, instead of two different system font sizes.
+
 ## Release notes (1.5.0)
 
 Fixed: changing units, the city or GPS in the settings now updates the weather straight away instead of up to 30 minutes later. If the phone cannot refresh the weather for 6 hours, the temperature, high and low and the forecast are hidden instead of showing old numbers. The high and low now cover the location's own day, wherever it is. In polar night and midnight sun the face shows a label instead of a countdown that makes no sense. Privacy: the location sent to Open-Meteo is rounded to about 1 km, and the README and the settings page now say what is shared. The city search ignores late replies and times out, and the settings message has more headroom.
