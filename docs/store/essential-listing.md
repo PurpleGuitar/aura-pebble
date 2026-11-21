@@ -1,3 +1,13 @@
+## What is new in 1.6.0
+
+Much lighter on the battery: the face now redraws once a minute. Before, every heart rate reading and every step change redrew it, and each redraw is a lot of work.
+
+New setting, "Heart rate and steps update": every minute (the default), every 30 seconds, every 15 seconds or every 5 seconds. Pick a short one during a workout, then go back.
+
+With the default, the heart rate and the steps can be up to a minute behind. This replaces the 1.5.0 behaviour of showing a new heart rate as soon as it arrives.
+
+The black outline around the complication icons is drawn with a third of the work and looks the same.
+
 ## What is new in 1.5.0
 
 Bigger complication icons, and the step-count shoe is redrawn at its real size so it no longer looks stretched.
