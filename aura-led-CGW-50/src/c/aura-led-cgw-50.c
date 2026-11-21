@@ -248,12 +248,11 @@ static const uint8_t DOT_GLYPHS[][7] = {
   {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C},
 };
 
-// Draws `text` as 2 px dots on a 3 px pitch; unlit dots show as a faint tint when ghosts are on.
+// Draws `text` as dots on a `pitch` px grid (3 in Quiet, 2 in Timeline); unlit dots show as a faint tint when ghosts are on.
 // Returns the x after the last character.
 static bool row_col_odd(int r, int c) { return (r + c) & 1; }
 
-static int draw_dots(GContext *ctx, const char *text, int x, int y, GColor on, int dot) {
-  const int pitch = 3;
+static int draw_dots(GContext *ctx, const char *text, int x, int y, GColor on, int dot, int pitch) {
   for (const char *c = text; *c; c++) {
     const char *at = *c == ' ' ? NULL : strchr(DOT_CHARS, *c);
     if (!at) { x += 3 * pitch; continue; }
@@ -261,7 +260,7 @@ static int draw_dots(GContext *ctx, const char *text, int x, int y, GColor on, i
     for (int r = 0; r < 7; r++) {
       for (int col = 0; col < 5; col++) {
         bool lit = g[r] & (0x10 >> col);
-        if (!lit && (!s_ghosts || dot > 2 || (row_col_odd(r, col)))) continue;
+        if (!lit && (!s_ghosts || dot >= pitch || (row_col_odd(r, col)))) continue;
         graphics_context_set_fill_color(ctx, lit ? on : mix(s_fg, s_bg, GHOST_MIX));
         graphics_fill_rect(ctx, GRect(x + col * pitch, y + r * pitch, dot, dot), 0, GCornerNone);
       }
@@ -274,7 +273,7 @@ static int draw_dots(GContext *ctx, const char *text, int x, int y, GColor on, i
 // "SAT OCT 17" (or "SAT 17 OCT"), upper case, weekday in the accent colour.
 static void draw_date(GContext *ctx, struct tm *tm, int x, int y) {
   char day[4], rest[12];
-  bool dots = s_date_style >= 1 && s_date_style <= 3 && s_layout < 2;
+  bool dots = s_date_style >= 1 && s_date_style <= 3 && s_layout < 3;
   bool seg14 = s_date_style == 4 && s_layout < 3;
   for (int i = 0; i < 3; i++) day[i] = DAYS[tm->tm_wday][i] & ~0x20;
   day[3] = 0;
@@ -284,24 +283,27 @@ static void draw_date(GContext *ctx, struct tm *tm, int x, int y) {
   if (s_mdy) snprintf(rest, sizeof(rest), " %s %d", mon, tm->tm_mday);
   else snprintf(rest, sizeof(rest), " %d %s", tm->tm_mday, mon);
   if (dots) {
-    int dot = s_date_style == 1 ? 2 : 3;
-    int nx = draw_dots(ctx, day, x, y + 7, s_accent, dot);
-    if (s_date_style < 3) { draw_dots(ctx, rest, nx, y + 7, s_fg, dot); return; }
+    // Timeline is tighter (weather sits on the same row), so its grid is 2 px instead of 3.
+    const bool small = s_layout == 2;
+    const int pitch = small ? 2 : 3, dot = s_date_style == 1 ? pitch - 1 : pitch;
+    const int dy = small ? y + 8 : y + 7, nw = small ? 8 : 11, nh = small ? 14 : 21, ngap = small ? 2 : 3, sp = small ? 6 : 9;
+    int nx = draw_dots(ctx, day, x, dy, s_accent, dot, pitch);
+    if (s_date_style < 3) { draw_dots(ctx, rest, nx, dy, s_fg, dot, pitch); return; }
     // hybrid: letters in dots, the day number in the same 7-segment digits as the time
     char num[4];
     snprintf(num, sizeof(num), "%d", tm->tm_mday);
     s_ghosts_on = false;
     s_ink = s_fg;
     if (s_mdy) {
-      nx = draw_dots(ctx, " ", nx, y + 7, s_fg, dot);
-      nx = draw_dots(ctx, mon, nx, y + 7, s_fg, dot) + 9;
+      nx = draw_dots(ctx, " ", nx, dy, s_fg, dot, pitch);
+      nx = draw_dots(ctx, mon, nx, dy, s_fg, dot, pitch) + sp;
       s_bold7 = s_seg14_bold;
-      lcd_str(ctx, num, nx, y + 7, 11, 21, 3);
+      lcd_str(ctx, num, nx, dy, nw, nh, ngap);
     } else {
-      nx += 9;
+      nx += sp;
       s_bold7 = s_seg14_bold;
-      lcd_str(ctx, num, nx, y + 7, 11, 21, 3);
-      draw_dots(ctx, mon, nx + lcd_width(num, 11, 21, 3) + 9, y + 7, s_fg, dot);
+      lcd_str(ctx, num, nx, dy, nw, nh, ngap);
+      draw_dots(ctx, mon, nx + lcd_width(num, nw, nh, ngap) + sp, dy, s_fg, dot, pitch);
     }
     s_bold7 = 0;
     s_ghosts_on = s_ghosts;
@@ -460,14 +462,19 @@ static void paint_timeline(GContext *ctx, struct tm *tm, int now_min) {
   char buf[24];
   const int mx = G.mx;
   draw_date(ctx, tm, mx, G.date_y);
-  GFont f24 = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), f18 = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
-  if (s_wx_show) {
-    snprintf(buf, sizeof(buf), "%d\xC2\xB0", s_wx_temp);
-    graphics_context_set_text_color(ctx, s_fg);
-    draw_text(ctx, buf, f24, GRect(W - mx - 56, G.date_y, 56, 28), GTextAlignmentRight);
-    GSize ts = graphics_text_layout_get_content_size(buf, f24, GRect(0, 0, 100, 30), GTextOverflowModeFill, GTextAlignmentRight);
+  if (s_wx_show) {   // current temperature, top right, in the same 7-segment digits as the time
+    const int tw = 8, th = 16, tg = 3, ty = G.date_y + 7;
+    snprintf(buf, sizeof(buf), "%d", s_wx_temp);
+    int bw7 = lcd_width(buf, tw, th, tg), tx = W - mx - bw7 - 7;
+    s_ghosts_on = false;
+    s_bold7 = s_bold_wx;
+    set_aa(s_fg);
+    lcd_str(ctx, buf, tx, ty, tw, th, tg);
+    s_bold7 = 0;
+    graphics_context_set_stroke_color(ctx, s_fg);
+    graphics_draw_circle(ctx, GPoint(tx + bw7 + 4, ty + 2), 2);
     graphics_context_set_text_color(ctx, icon_color());
-    draw_text(ctx, wx_glyph(s_wx_code, s_night), s_f_wx, GRect(W - mx - ts.w - 36, G.date_y - 2, 34, 30), GTextAlignmentRight);
+    draw_text(ctx, wx_glyph(s_wx_code, s_night), s_f_wx, GRect(tx - 36, G.date_y - 2, 34, 30), GTextAlignmentRight);
   }
   s_ghosts_on = s_ghosts;
   if (s_time24) snprintf(buf, sizeof(buf), "%02d:%02d", tm->tm_hour, tm->tm_min);
@@ -482,9 +489,23 @@ static void paint_timeline(GContext *ctx, struct tm *tm, int now_min) {
   graphics_context_set_text_color(ctx, mix(s_fg, s_bg, 62));
   draw_text(ctx, "NEXT 12H", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(x0 - 2, G.bot_y, 90, 16), GTextAlignmentLeft);
   if (s_wx_show) {
-    snprintf(buf, sizeof(buf), "%d / %d\xC2\xB0", s_wx_lo, s_wx_hi);
-    graphics_context_set_text_color(ctx, s_fg);
-    draw_text(ctx, buf, f18, GRect(W - mx - 90, G.bot_y - 4, 90, 24), GTextAlignmentRight);
+    const int hw = 7, hh = 14, hg = 2, hy = G.bot_y + 1;   // low / high, 7-segment like the countdown above
+    char lo[8], hi[8];
+    snprintf(lo, sizeof(lo), "%d", s_wx_lo);
+    snprintf(hi, sizeof(hi), "%d", s_wx_hi);
+    int lw = lcd_width(lo, hw, hh, hg), hiw = lcd_width(hi, hw, hh, hg);
+    int x = W - mx - (lw + 9 + hiw + 7);
+    s_ghosts_on = false;
+    s_bold7 = s_bold_wx;
+    set_aa(s_fg);
+    lcd_str(ctx, lo, x, hy, hw, hh, hg);
+    lcd_str(ctx, hi, x + lw + 9, hy, hw, hh, hg);
+    s_bold7 = 0;
+    s_ghosts_on = s_ghosts;
+    graphics_context_set_stroke_color(ctx, mix(s_fg, s_bg, 62));
+    graphics_draw_line(ctx, GPoint(x + lw + 6, hy + hh), GPoint(x + lw + 9, hy));   // slash
+    graphics_context_set_stroke_color(ctx, s_fg);
+    graphics_draw_circle(ctx, GPoint(x + lw + 9 + hiw + 3, hy + 2), 2);
   }
   if (s_fc_hour < 0) return;
   int off = (tm->tm_hour - s_fc_hour + 24) % 24;
